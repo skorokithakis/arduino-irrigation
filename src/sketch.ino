@@ -22,6 +22,10 @@ char pinStates[INPUT_LENGTH] = {0};
 
 #define TimeLap(t1) (int)((word)millis()-(word)t1)
 
+// If you have a push-button setup, where you push a button for on and another
+// for off, set these two pins to the two relays (on/off). If you have a single
+// switch that stays on/off when you call, set these two pins to the same
+// number (i.e. the pin number of the single relay that will stay on or off).
 #define PIN_ON 11
 #define PIN_OFF 10
 #define PIN_ON_INTERVAL 500
@@ -72,21 +76,42 @@ void initGSM() {
 
 void toggleOutput() {
     // Toggle the output relays on or off.
-    if (digitalRead(INPUT_OPERATION) == OFF) {
-        digitalWrite(PIN_ON, ON);
-        Serial.println("Pushing ON button.");
+    if (PIN_ON == PIN_OFF) {
+        if (digitalRead(INPUT_OPERATION) == OFF) {
+            Serial.println("Turning on.");
+            digitalWrite(PIN_ON, ON);
+        } else {
+            Serial.println("Turning off.");
+            digitalWrite(PIN_ON, OFF);
+        }
     } else {
-        digitalWrite(PIN_OFF, ON);
-        Serial.println("Pushing OFF button.");
+        if (digitalRead(INPUT_OPERATION) == OFF) {
+            digitalWrite(PIN_ON, ON);
+            Serial.println("Pushing ON button.");
+        } else {
+            digitalWrite(PIN_OFF, ON);
+            Serial.println("Pushing OFF button.");
+        }
+        nextMillis = (word)millis() + PIN_ON_INTERVAL;
     }
-    nextMillis = (word)millis() + PIN_ON_INTERVAL;
+}
+
+void resetOutput() {
+    digitalWrite(PIN_ON, OFF);
+    digitalWrite(PIN_OFF, OFF);
 }
 
 void checkToggle() {
     // Check if we need to reset the output relays.
+
+    if (PIN_ON == PIN_OFF) {
+        // If the on and off pins are the same, we only have a single relay,
+        // so we don't need to reset anything.
+        return;
+    }
+
     if ((nextMillis != 0) && (TimeLap(nextMillis) >= 0)) {
-        digitalWrite(PIN_ON, OFF);
-        digitalWrite(PIN_OFF, OFF);
+        resetOutput();
         nextMillis = 0;
     }
 }
@@ -105,7 +130,7 @@ void checkRelays() {
             // If the pin's state changed, note it.
             statesChanged[i] = 1;
         }
-        // Update the state regardless.
+        // Update the state.
         pinStates[i] = pinState;
     }
 
@@ -113,14 +138,18 @@ void checkRelays() {
     if (statesChanged[0] == 1 && pinStates[0] == OFF) {
         // Phase dropped, send message regardless.
         sendSMS("Phase dropped.");
+        resetOutput();
     } else if (statesChanged[1] == 1 && pinStates[1] == OFF) {
         sendSMS("Thermal dropped.");
+        resetOutput();
     } else if ((statesChanged[2] == 1 && pinStates[2] == OFF) &&
                (statesChanged[3] == 1 &&  pinStates[3] == OFF)) {
         // Pressure dropped *and operation dropped simultaneously*.
         sendSMS("Pressure dropped.");
+        resetOutput();
     } else if (statesChanged[3] == 1 && pinStates[3] == OFF) {
         sendSMS("Pump shut down.");
+        resetOutput();
     } else if (statesChanged[3] == 1 && pinStates[3] == ON) {
         sendSMS("Pump started.");
     }
